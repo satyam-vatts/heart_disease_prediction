@@ -1,0 +1,360 @@
+# Project : Heart Disease Prediction
+# Required Libraries
+```{r}
+library(dplyr)
+library(corrplot)
+library(ggplot2)
+library(interactions)
+library(caTools)
+library(MASS)
+library(car)
+library(aod)
+```
+
+## Data Overview
+
+```{r}
+heart <- read.csv('heart.csv')
+heart$age <- heart$ï..age
+
+heart <- heart[-c(1)]
+
+cat_vars <- c( 'cp', 'slope', 'ca', 'thal','sex','exang','fbs', 'target', 'restecg')
+num_vars <- colnames(heart)[!colnames(heart) %in% cat_vars]
+
+
+heart[cat_vars] <- lapply(heart[cat_vars], as.factor)
+summary(heart)
+```
+- in ca : The value of 4 is invalid as data description says that the value for ca lies between  0 to 3.
+
+- thal : 0 is an invalid value as it can either be 1 that is Normal, 1 Fixed defect, 2 Reversible Defect.
+
+Angina is the main symptom of CHD. Angina is a chest pain. SO if chest pain is Angina it is a sure case of CHD. In case of asymptomatic and non-anginal pain, analysis of other variables is needed.
+
+
+
+# Dropping invalid values from ca and thal
+
+
+
+```{r}
+heart <- subset(heart, ca!=4)
+heart <- subset(heart, thal!=0)
+heart$ca<- droplevels(heart$ca)
+heart$thal<- droplevels(heart$thal)
+
+```
+
+
+
+## Analyzing Dataset:
+
+```{r}
+sum(is.na(heart))
+```
+No Missing Data
+
+Checking Duplicates
+
+```{r}
+dim(distinct(heart))
+
+heart <- unique(heart)
+```
+1 Duplicate row found, Number of observations are now 302.
+
+
+
+# Dropping invalid values from ca and thal
+```{r}
+heart <- subset(heart, ca!=4)
+heart <- subset(heart, thal!=0)
+heart$ca<- droplevels(heart$ca)
+heart$thal<- droplevels(heart$thal)
+```
+```{r}
+str(heart)
+```
+
+
+## Numerical Variables : Two Sample T-Test
+
+```{r}
+# Variance  Check
+var.test(subset(heart, target==0)$trestbps, subset(heart, target==1)$trestbps)
+var.test(subset(heart, target==0)$chol, subset(heart, target==1)$chol)
+var.test(subset(heart, target==0)$thalach, subset(heart, target==1)$thalach)
+var.test(subset(heart, target==0)$oldpeak, subset(heart, target==1)$oldpeak)
+var.test(subset(heart, target==0)$age, subset(heart, target==1)$age)
+```
+variance equal for trestbps and chol, for rest variances are unequal
+
+```{r}
+t.test(subset(heart, target==0)$trestbps, subset(heart, target==1)$trestbps, var.equal = TRUE)
+t.test(subset(heart, target==0)$chol, subset(heart, target==1)$chol, var.equal = TRUE)
+t.test(subset(heart, target==0)$thalach, subset(heart, target==1)$thalach, var.equal = FALSE)
+t.test(subset(heart, target==0)$oldpeak, subset(heart, target==1)$oldpeak, var.equal = FALSE)
+t.test(subset(heart, target==0)$age, subset(heart, target==1)$age, var.equal = FALSE)
+```
+All are significant variables except chol.
+
+## Chi-Sq Test
+
+```{r}
+table(heart$sex, heart$target)
+chisq.test(x=heart$sex, y=heart$target)
+```
+significant
+
+```{r}
+table(heart$cp, heart$target)
+chisq.test(x=heart$cp, y=heart$target)
+
+table(heart$fbs, heart$target)
+chisq.test(x=heart$fbs, y=heart$target)
+
+table(heart$exang, heart$target)
+chisq.test(x=heart$exang, y=heart$target)
+
+
+```
+significant 
+
+```{r}
+# table(heart$fbs, heart$target)
+# chisq.test(x=heart$fbs, y=heart$target)
+```
+not significant  -fbs
+  
+```{r}
+table(heart$restecg, heart$target)
+chisq.test(x=heart$restecg, y=heart$target)
+```
+Since Type-2 has just 4 observations, we will megre it with type-1 and change the levels to 0 being normal and 1 being abnormal
+```{r}
+heart$restecg[heart$restecg == 2] <- 1
+heart$restecg <- droplevels(heart$restecg)
+table(heart$restecg, heart$target)
+chisq.test(x=heart$restecg, y=heart$target)
+```
+significant
+
+```{r}
+# table(heart$exang, heart$target)
+# chisq.test(x=heart$exang, y=heart$target)
+```
+```{r}
+# table(heart$slope, heart$target)
+# chisq.test(x=heart$slope, y=heart$target)
+```
+significant
+
+```{r}
+table(heart$ca, heart$target)
+chisq.test(x=heart$ca, y=heart$target)
+```
+
+significant
+
+```{r}
+table(heart$thal, heart$target)
+chisq.test(x=heart$thal, y=heart$target)
+```
+
+
+significant
+
+
+#chose initial variables -- remove col and fbs due to insignificance in either T test or chi square test
+
+```{r}
+heart_v1 <- subset(heart, select = -c(chol,fbs))
+num_vars_v1 <- num_vars[-2]
+cat_vars_v1 <- cat_vars[-7]
+heart_target_n <- ifelse(heart$target == 0, 0, 1)
+```
+
+
+
+
+## Check for Multicolinearity between predictors
+
+
+### Numerical Variables
+
+```{r}
+coeff <- cor(heart_v1[num_vars_v1])
+coeff
+
+```
+
+```{r}
+corrplot(coeff, type="upper", order="hclust", tl.col="red", tl.srt=45, diag = FALSE, method = 'number',
+         col= colorRampPalette(c("blue","green", "yellow"))(10))
+```
+
+```{r}
+my_cols <- c("#00AFBB", "#E7B800")  #, "#FC4E07"
+pairs(heart_v1[num_vars_v1], pch = 19,
+      col = my_cols[heart_v1$target],
+      lower.panel=NULL)
+
+```  
+
+No high correlation in variables, so no multicollinearity between them
+
+
+
+## Interaction Terms 
+Just pick one interaction if there is more than 1
+Even if there is no interaction, pick one to compare with and without interaction model
+
+
+
+```{r}
+
+fit1 <- glm(data = heart_v1, formula = target ~ sex * ca, family = 'binomial')
+cat_plot(fit1,pred = ca, modx = sex, geom = 'line')
+
+fit2 <- glm(data = heart_v1, formula = target ~ sex * thal, family = 'binomial')
+cat_plot(fit2,pred = thal, modx = sex, geom = 'line')
+
+fit3 <- glm(data = heart_v1, formula = target ~ sex * slope, family = 'binomial')
+cat_plot(fit3,pred = slope, modx = sex, geom = 'line')
+
+interaction.plot(heart_v1$ca,heart_v1$sex,as.numeric(heart_v1$target))
+
+
+```
+
+## Split the dataset : Train & Testset
+
+```{r}
+set.seed(0)
+data_split <- sample.split(heart_v1$target, SplitRatio = 0.7)
+heart_v1.train <- subset(heart_v1, data_split == T)
+heart_v1.test <- subset(heart_v1, data_split == F)
+heart_target_n.test <- subset(heart_target_n, data_split == F)
+nrow(heart_v1.test)
+nrow(heart_v1.train)
+
+```
+
+##Stepwise Variable selection
+
+### Without Interaction
+```{r}
+full_fit_wo_int <- glm(data = heart_v1.train, family = binomial, formula = target~.)
+stepAIC(full_fit_wo_int, direction = "both", trace =TRUE)
+```
+
+### With Interaction : Sex * Thal
+```{r}
+full_fit_int <- glm(data = heart_v1.train, family = binomial, formula = target~cp+trestbps+restecg+thalach+exang+oldpeak+slope+ca+age+sex+thal+sex:thal)
+stepAIC(full_fit_int, direction = "both", trace =TRUE)
+```
+
+Without Interaction Model : target ~ sex + cp + slope + ca + thal
+Wih Interaction model : target ~ sex + cp + slope + ca + thal + sex:thal
+
+## Compare Models using 
+### Log-likelihood Ratio Test : Use Anova to check goodness of fit
+```{r}
+fit_wo_int <- glm(formula = target ~ cp + slope + ca + sex + thal, family = binomial, 
+    data = heart_v1.train)
+fit_int <- glm(formula = target ~ cp + slope + ca + sex + thal+ sex:thal, family = binomial, 
+    data = heart_v1.train)
+summary(fit_wo_int)
+summary(fit_int)
+```
+### Checking significance of parameter in model : Interaction Term
+LRT : 
+```{r}
+res_wo_int <- 112.19
+res_int <- 111.24
+diff <- res_wo_int - res_int
+pchisq(diff, df = 2, lower.tail = FALSE)
+anova(fit_wo_int, fit_int, test = "LRT")
+```
+Since, p-value is high, so we consider model without interaction.
+
+### Wald Test
+From results, p-value of interaction term for z-test statistic is greater than 0.05 indicating acceptance of null hypothesis, i.e., beta = 0 or no intercation term
+
+```{r}
+wald.test(b = coef(fit_int), Sigma = vcov(fit_int), Terms = 13:14)
+```
+
+
+## Final Data Model Training
+
+## Predicting Responses
+```{r}
+heart_v1.test$predicted <- predict(fit_wo_int, newdata = heart_v1.test, type = "response")
+```
+
+
+# Classification Report(Sensitivity, Specificity, Accuracy)
+
+## Evaluating cut-off probability
+```{r}
+pi0 <- sum(heart_target_n)/nrow(heart_v1)
+pi0
+```
+Taking cut-off probability as 0.54 
+
+## Comapre a pre-defined pi value with probablities obtained.
+```{r}
+heart_v1.test$predicted <- ifelse(heart_v1.test$predicted > pi0, 1, 0)
+heart_v1.test$predicted
+```
+
+
+## Create Confusion matrix for accuracy
+```{r}
+library(caret)
+Actual <- heart_target_n.test
+Predicted <- heart_v1.test$predicted
+confusionMatrix(as.factor(Predicted),as.factor(Actual),positive = "1")
+```
+
+## Acuracy for Model with interaction
+
+```{r}
+heart_v1.test$predicted_int <- predict(fit_int, newdata = heart_v1.test, type = "response")
+heart_v1.test$predicted_int <- ifelse(heart_v1.test$predicted_int > pi0, 1, 0)
+Predicted_int <- heart_v1.test$predicted_int
+confusionMatrix(as.factor(Predicted_int),as.factor(Actual), positive="1")
+```
+
+## ROC curve 
+```{r}
+library(PRROC)
+
+PRROC_obj <- roc.curve(scores.class0 = Predicted, weights.class0=Actual,
+                       curve=TRUE)
+plot(PRROC_obj)
+```
+
+```{r}
+PRROC_obj_int <- roc.curve(scores.class0 = Predicted_int, weights.class0=Actual,
+                       curve=TRUE)
+plot(PRROC_obj_int)
+```
+
+## Lack of Fit Test (Homser-Lemshow Test-ungrouped data)
+
+```{r}
+library(ResourceSelection)
+hoslem.test(fit_wo_int$y, fitted(fit_wo_int), g=10)
+```
+
+```{r}
+hoslem.test(fit_int$y, fitted(fit_int), g=10)
+```
+
+
+
+
+
